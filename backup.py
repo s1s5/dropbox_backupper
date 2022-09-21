@@ -6,6 +6,8 @@ from typing import IO, Iterable, Iterator, Optional
 
 import dropbox
 import dropbox.files
+import requests
+from requests.adapters import HTTPAdapter, Retry
 
 
 class IterStream(io.RawIOBase):
@@ -98,7 +100,19 @@ def dir_to_tgz(root_dir: str) -> Iterator[bytes]:
 
 
 def main(root_dir, dropbox_token, target_path):
-    dbx = dropbox.Dropbox(dropbox_token)
+    session = requests.Session()
+    adapter = HTTPAdapter(
+        pool_connections=8,
+        pool_maxsize=32,
+        max_retries=Retry(
+            total=10, backoff_factor=0.5, status_forcelist=[500, 502, 503, 504]
+        ),
+    )
+
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+
+    dbx = dropbox.Dropbox(dropbox_token, session=session)
     upload_to_dropbox(dbx, target_path, iterable_to_stream(dir_to_tgz(root_dir)))
 
 
